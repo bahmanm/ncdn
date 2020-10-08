@@ -17,7 +17,7 @@ char PATH_DELIM[2] = "/\0";
 ///////////////////////////////////////////////////////////////////////////////
 
 
-struct params_cat {
+struct params {
      char * dir;
      char * file;
      char * field;
@@ -25,18 +25,18 @@ struct params_cat {
 
 
 void
-params_cat_fprintf(struct params_cat * params, FILE * f);
+params_fprintf(struct params * params, FILE * f);
 int
-params_cat_from_args(struct params_cat * params, int argc, char ** argv);
+params_from_args(struct params * params, int argc, char ** argv);
 int
-params_cat_validate(struct params_cat * params);
+params_validate(struct params * params);
 
 
 //////////////////////////////////////////////////
 
 
 void
-params_cat_fprintf(struct params_cat * params, FILE * f)
+params_fprintf(struct params * params, FILE * f)
 {
      if (params == NULL)
           return;
@@ -46,7 +46,7 @@ params_cat_fprintf(struct params_cat * params, FILE * f)
 
 
 int
-params_cat_from_args(struct params_cat * params, int argc, char ** argv)
+params_from_args(struct params * params, int argc, char ** argv)
 {
      assert(params != NULL);
      int opt;
@@ -75,7 +75,7 @@ params_cat_from_args(struct params_cat * params, int argc, char ** argv)
 
 
 int
-params_cat_validate(struct params_cat * params)
+params_validate(struct params * params)
 {
      if (params->dir == NULL || strcmp("\0", params->dir) == 0)
           params->dir = strdup(".\0");
@@ -231,15 +231,15 @@ main(int argc, char ** argv)
 {
      GC_INIT();
      //
-     struct params_cat * params;
+     struct params * params;
      char * filepath;
      json_error_t error;
      json_t * root;
 
-     params = GC_MALLOC(sizeof(struct params_cat));
-     if (params_cat_from_args(params, argc, argv) != 0)
+     params = GC_MALLOC(sizeof(struct params));
+     if (params_from_args(params, argc, argv) != 0)
           return 1;
-     if (params_cat_validate(params) != 0)
+     if (params_validate(params) != 0)
           return 1;
 
      str_concat(&filepath, params->dir, PATH_DELIM, params->file);
