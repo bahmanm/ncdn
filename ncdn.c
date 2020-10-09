@@ -148,11 +148,10 @@ str_repeat(char * s, size_t times)
      dstlen = slen * times + 1;
      if ((dst = GC_MALLOC(dstlen * sizeof(char))) == NULL)
           return NULL;
-     dst[dstlen-1] = '\0';
 
      dst_wip = dst;
      for (i=0; i<times; i++)
-          dst_wip = stpncpy(dst_wip, s, slen);
+          dst_wip = stpcpy(dst_wip, s);
 
      return dst;
 }
