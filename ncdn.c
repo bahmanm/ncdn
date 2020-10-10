@@ -17,10 +17,23 @@ char PATH_DELIM[2] = "/\0";
 ///////////////////////////////////////////////////////////////////////////////
 
 
+#define CMD_STR_cat "cat\0"
+#define CMD_STR_set "set\0"
+
+
+enum CMD {
+     CMD_cat,
+     CMD_set
+};
+
+
 struct params {
+     enum CMD cmd;
+     char * cmd_str;
      char * dir;
      char * file;
      char * field;
+     char * value;
 };
 
 
@@ -40,8 +53,8 @@ params_fprintf(struct params * params, FILE * f)
 {
      if (params == NULL)
           return;
-     fprintf(f, "params{dir='%s', file='%s', field='%s'}\n",
-             params->dir, params->file, params->field);
+     fprintf(f, "params{dir='%s', file='%s', field='%s', value='%s'}\n",
+             params->dir, params->file, params->field, params->value);
 }
 
 
@@ -50,7 +63,7 @@ params_from_args(struct params * params, int argc, char ** argv)
 {
      assert(params != NULL);
      int opt;
-     while ((opt = getopt(argc, argv, ":d:")) != -1)
+     while ((opt = getopt(argc, argv, ":d:")) != -1) {
           switch (opt) {
           case 'd':
                params->dir = strdup(optarg);
@@ -60,7 +73,12 @@ params_from_args(struct params * params, int argc, char ** argv)
                printf("unknown option '%c'\n", optopt);
                return -1;
           }
-
+     }
+     if (optind < argc) {
+          params->cmd_str = strdup(argv[optind]);
+          assert(params->cmd_str != NULL);
+          optind += 1;
+     }
      if (optind < argc) {
           params->file = strdup(argv[optind]);
           assert(params->file != NULL);
@@ -69,6 +87,23 @@ params_from_args(struct params * params, int argc, char ** argv)
      if (optind < argc) {
           params->field = strdup(argv[optind]);
           assert(params->field != NULL);
+          optind += 1;
+     }
+     if (optind < argc) {
+          params->value = strdup(argv[optind]);
+          assert(params->value != NULL);
+          optind += 1;
+     }
+     return 0;
+}
+
+
+int
+params_validate_set(struct params * params)
+{
+     if (params->field == NULL || strcmp("\0", params->field) == 0) {
+          fprintf(stderr, "missing field\n");
+          return -1;
      }
      return 0;
 }
@@ -79,12 +114,22 @@ params_validate(struct params * params)
 {
      if (params->dir == NULL || strcmp("\0", params->dir) == 0)
           params->dir = strdup(".\0");
-     if (params->file == NULL || strcmp("\0", params->file) == 0)
-     {
+
+     if (params->file == NULL || strcmp("\0", params->file) == 0) {
           fprintf(stderr, "missing note\n");
           return -1;
      }
-     return 0;
+
+     if (strcmp(params->cmd_str, CMD_STR_cat) == 0) {
+          params->cmd = CMD_cat;
+          return 0;
+     } else if (strcmp(params->cmd_str, CMD_STR_set) == 0) {
+          params->cmd = CMD_set;
+          return params_validate_set(params);
+     } else {
+          fprintf(stderr, "unknown cmd\n");
+          return -1;
+     }
 }
 
 
@@ -226,20 +271,11 @@ visit_json(json_t * obj, int level)
 
 
 int
-main(int argc, char ** argv)
+run_cmd_cat(struct params * params)
 {
-     GC_INIT();
-     //
-     struct params * params;
      char * filepath;
      json_error_t error;
      json_t * root;
-
-     params = GC_MALLOC(sizeof(struct params));
-     if (params_from_args(params, argc, argv) != 0)
-          return 1;
-     if (params_validate(params) != 0)
-          return 1;
 
      str_concat(&filepath, params->dir, PATH_DELIM, params->file);
      root = json_load_file(filepath, 0, &error);
@@ -248,11 +284,72 @@ main(int argc, char ** argv)
           return 1;
      }
      if (params->field == NULL || strcmp("\0", params->field) == 0) {
-          visit_json(root, 0);
+          return visit_json(root, 0);
      } else {
           json_t * value = json_object_get(root, params->field);
-          visit_json(value, 0);
+          return visit_json(value, 0);
      }
+}
 
+
+int
+run_cmd_set(struct params * params)
+{
+     char * filepath;
+     json_error_t error;
+     json_t * root;
+     json_t * value;
+
+     str_concat(&filepath, params->dir, PATH_DELIM, params->file);
+     root = json_load_file(filepath, 0, &error);
+     if (root == NULL) {
+          fprintf(stderr, "json_load_file(): %d %s\n", error.line, error.text);
+          return 1;
+     }
+     if (!json_is_object(root)) {
+          fprintf(stderr, "malformed note\n");
+          return 1;
+     }
+     value = json_pack("s", params->value);
+     json_object_set(root, params->field, value);
+     if (json_dump_file(root, filepath, 0) != 0) {
+          fprintf(stderr, "json_dump_file(): failed\n");
+          return 1;
+     }
      return 0;
+}
+
+
+int
+run_cmd(struct params * params)
+{
+     switch (params->cmd) {
+     case CMD_cat:
+          return run_cmd_cat(params);
+     case CMD_set:
+          return run_cmd_set(params);
+     default:
+          fprintf(stderr, "unimplemented command\n");
+          return -1;
+     }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+int
+main(int argc, char ** argv)
+{
+     GC_INIT();
+
+     struct params * params;
+
+     params = GC_MALLOC(sizeof(struct params));
+     if (params_from_args(params, argc, argv) != 0)
+          return 1;
+     if (params_validate(params) != 0)
+          return 1;
+
+     return run_cmd(params);
 }
