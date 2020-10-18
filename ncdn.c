@@ -6,6 +6,8 @@
 #include <errno.h>
 #include <gc.h>
 #include <jansson.h>
+#include <glib.h>
+#include <glib/gi18n.h>
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -34,6 +36,7 @@ struct params {
      char * file;
      char * field;
      char * value;
+     gboolean from_file;
 };
 
 
@@ -63,11 +66,15 @@ params_from_args(struct params * params, int argc, char ** argv)
 {
      assert(params != NULL);
      int opt;
-     while ((opt = getopt(argc, argv, ":d:")) != -1) {
+     params->from_file = FALSE;
+     while ((opt = getopt(argc, argv, ":fd:")) != -1) {
           switch (opt) {
           case 'd':
                params->dir = strdup(optarg);
                assert(params->dir != NULL);
+               break;
+          case 'f':
+               params->from_file = TRUE;
                break;
           default:
                printf("unknown option '%c'\n", optopt);
@@ -137,7 +144,7 @@ params_validate(struct params * params)
 
 
 size_t
-file_slurp(char * * contents, char * filepath)
+file_slurp(char ** contents, char * filepath)
 {
      FILE * f = fopen(filepath, "r");
      if (f == NULL) {
@@ -291,6 +298,26 @@ run_cmd_cat(struct params * params)
      }
 }
 
+gchar *
+file_base64_encode(gchar * filepath)
+{
+     gchar * contents;
+     gsize len;
+     GError * error;
+     gchar * enc_contents;
+
+     if (g_file_get_contents(filepath, &contents, &len, &error) == FALSE) {
+          fprintf(stderr, "g_file_get_contents(): %s\n", error->message);
+          return NULL;
+     }
+     enc_contents = g_base64_encode((guchar *) contents, len);
+     if (enc_contents == NULL) {
+          fprintf(stderr, "g_base64_encode(): %s\n", error->message);
+          return NULL;
+     }
+     return enc_contents;
+}
+
 
 int
 run_cmd_set(struct params * params)
@@ -310,7 +337,12 @@ run_cmd_set(struct params * params)
           fprintf(stderr, "malformed note\n");
           return 1;
      }
-     value = json_pack("s", params->value);
+     if (params->from_file) {
+          gchar * file_contents = file_base64_encode(params->value);
+          value = json_pack("s", file_contents);
+     } else {
+          value = json_pack("s", params->value);
+     }
      json_object_set(root, params->field, value);
      if (json_dump_file(root, filepath, 0) != 0) {
           fprintf(stderr, "json_dump_file(): failed\n");
